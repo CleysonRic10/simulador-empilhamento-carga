@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulator Pro - Carregamento</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #dedede; font-family: 'Courier New', monospace; color: #333; }
+        #ui { position: absolute; top: 20px; left: 20px; background: rgba(221, 221, 221, 0.95); border: 2px solid #F88619; padding: 20px; width: 320px; z-index: 100; box-shadow: 0 0 15px rgba(0, 0, 0, 0.1); }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        button { background: #F88619; color: #000; border: none; padding: 12px; cursor: pointer; font-weight: bold; text-transform: uppercase; font-size: 10px; transition: 0.2s; }
+        button:hover { background: #333; color: #fff; box-shadow: 0 0 10px #F88619; }
+        button:disabled { background: #bbb; color: #888; cursor: not-allowed; }
+        .full-width { grid-column: span 2; }
+        #status { margin-top: 15px; font-size: 11px; color: #008800; border-left: 2px solid #008800; padding-left: 8px; font-weight: bold; }
+        #telemetry { position: absolute; bottom: 20px; right: 20px; border: 1px solid #F88619; padding: 15px; background: rgba(222, 222, 222, 0.85); font-size: 11px; min-width: 250px; color: #333; }
+        .grid-display { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 10px; text-align: center; }
+        .cell-info { border: 1px solid #999; padding: 5px; font-size: 9px; background: #eee; }
+        .active-cell { border-color: #F88619; background: rgba(248, 134, 25, 0.2); }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <h2 style="margin:0 0 15px 0; font-size: 14px; letter-spacing: 1px; border-bottom: 1px solid #F88619; padding-bottom: 5px;">CARGO HOLDS PRO</h2>
+    <div class="controls">
+        <button id="startBtn" class="full-width">Iniciar Simulação</button>
+        <button id="pauseBtn" disabled>Pausar</button>
+        <button id="resumeBtn" disabled>Retomar</button>
+        <button onclick="location.reload()" class="full-width" style="background:#666; color:#fff;">Resetar Sistema</button>
+    </div>
+
+    <div style="font-size: 10px; margin: 10px 0 5px 0; color: #666;">AJUSTE DE CÂMERA</div>
+    <div class="controls">
+        <button onclick="window.setAngle(45)">45°</button>
+        <button onclick="window.setAngle(90)">90°</button>
+        <button onclick="window.setAngle(135)">135°</button>
+        <button onclick="window.setAngle(180)">180°</button>
+        <button onclick="window.adjustZoom(-5)" style="background:#ccc; color:#333; border: 1px solid #999;">ZOOM +</button>
+        <button onclick="window.adjustZoom(5)" style="background:#ccc; color:#333; border: 1px solid #999;">ZOOM -</button>
+    </div>
+    <div id="status">SISTEMA: STANDBY</div>
+</div>
+
+<div id="telemetry">
+    <div style="font-weight: bold; margin-bottom: 5px;">MONITOR DE CARGA (P1-P9)</div>
+    <div class="grid-display" id="gridMonitor"></div>
+</div>
+
+<script type="module">
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+
+const ETAPAS = [
+    { n: "Etapa 1",  p: { P1:20 } },
+    { n: "Etapa 2",  p: { P1:20, P2:10 } },
+    { n: "Etapa 3",  p: { P1:20, P2:10, P4:10 } },
+    { n: "Etapa 4",  p: { P1:20, P2:10, P4:10, P6:10 } },
+    { n: "Etapa 5",  p: { P1:20, P2:10, P4:10, P6:10, P8:10 } },
+    { n: "Etapa 6",  p: { P1:20, P2:12.5, P4:10, P6:10, P8:10 } },
+    { n: "Etapa 7",  p: { P1:20, P2:12.5, P4:12.5, P6:10, P8:10 } },
+    { n: "Etapa 8",  p: { P1:20, P2:12.5, P4:12.5, P6:12.5, P8:10 } },
+    { n: "Etapa 9",  p: { P1:20, P2:12.5, P4:12.5, P6:12.5, P8:12.5 } },
+    { n: "Etapa 10", p: { P1:20, P2:12.5, P4:12.5, P6:12.5, P8:12.5, P9:2.5 } },
+    { n: "Etapa 11", p: { P1:20, P2:15, P4:12.5, P6:12.5, P8:12.5, P9:2.5 } },
+    { n: "Etapa 12", p: { P1:20, P2:15, P3:2.5, P4:12.5, P6:12.5, P8:12.5, P9:2.5 } },
+    { n: "Etapa 13", p: { P1:20, P2:15, P3:2.5, P4:15, P6:12.5, P8:12.5, P9:2.5 } },
+    { n: "Etapa 14", p: { P1:20, P2:15, P3:2.5, P4:15, P5:2.5, P6:12.5, P8:12.5, P9:2.5 } },
+    { n: "Etapa 15", p: { P1:20, P2:15, P3:2.5, P4:15, P5:2.5, P6:15, P8:12.5, P9:2.5 } },
+    { n: "Etapa 16", p: { P1:20, P2:15, P3:2.5, P4:15, P5:2.5, P6:15, P8:12.5, P9:2.5, P7:2.5 } },
+    { n: "Etapa 17", p: { P1:20, P2:15, P3:2.5, P4:15, P5:2.5, P6:15, P8:15, P9:2.5, P7:2.5 } },
+    { n: "Etapa 18", p: { P1:30, P2:15, P3:2.5, P4:15, P5:2.5, P6:15, P8:15, P9:2.5, P7:2.5 } }
+];
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xdedede);
+
+const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+let angle = 45, targetAngle = 45;
+let radius = 35, targetRadius = 35;
+
+window.setAngle = (deg) => targetAngle = deg;
+window.adjustZoom = (delta) => targetRadius = Math.max(10, Math.min(100, targetRadius + delta));
+
+const posMap = {
+    P2:{x:-4, z:-4}, P3:{x:0, z:-4}, P4:{x:4, z:-4},
+    P9:{x:-4, z:0},  P1:{x:0, z:0},  P5:{x:4, z:0},
+    P8:{x:-4, z:4},  P7:{x:0, z:4},  P6:{x:4, z:4}
+};
+
+scene.add(new THREE.GridHelper(15, 15, 0xaaaaaa, 0xcccccc));
+
+const blocks = {}, state = {};
+const monitor = document.getElementById('gridMonitor');
+
+// FUNÇÃO PARA CRIAR GEOMETRIA BASEADA NA INTENSIDADE (DENSIDADE)
+function createAdaptiveGeometry(percentage) {
+    // Lógica: Se 2.5% tem 6000 pontos, o de 30% terá proporcionalmente mais para compensar o volume
+    const basePoints = 6000;
+    const pointsCount = percentage > 0 ? basePoints + (percentage * 500) : basePoints; 
+    
+    const geo = new THREE.BufferGeometry();
+    const posArr = new Float32Array(pointsCount * 3);
+    
+    for(let i=0; i<pointsCount*3; i+=3) {
+        const y = Math.pow(Math.random(), 1.6); 
+        const radiusAtY = (1 - y); 
+        const theta = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * radiusAtY;
+        posArr[i] = Math.cos(theta) * r;
+        posArr[i+1] = y; 
+        posArr[i+2] = Math.sin(theta) * r;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    return geo;
+}
+
+Object.keys(posMap).forEach(k => {
+    state[k] = { targetScale: 0.01, currentScale: 0.01, lastPercentage: 0 };
+    
+    // Inicializa com geometria padrão
+    const geo = createAdaptiveGeometry(0);
+    const mat = new THREE.PointsMaterial({ 
+        color: 0xF88619, 
+        size: 0.06,
+        transparent: true, 
+        blending: THREE.NormalBlending, 
+        depthWrite: false, 
+        opacity: 0.9 
+    });
+    
+    const pc = new THREE.Points(geo, mat);
+    pc.position.set(posMap[k].x, 0, posMap[k].z);
+    scene.add(pc);
+    blocks[k] = pc;
+
+    const div = document.createElement('div');
+    div.className = 'cell-info';
+    div.id = `ui-${k}`;
+    div.innerHTML = `${k}<br>0%`;
+    monitor.appendChild(div);
+});
+
+let step = 0, timer = null;
+
+function updateStep() {
+    if (step >= ETAPAS.length) return; // Segurança contra estouro
+    
+    const data = ETAPAS[step];
+    
+    // CORREÇÃO: Verifica se é a última etapa (índice 17 para Etapa 18)
+    if (step === ETAPAS.length - 1) {
+        document.getElementById("status").innerText = "OPERACIONAL: Finalizado.";
+        document.getElementById("pauseBtn").disabled = true;
+        document.getElementById("resumeBtn").disabled = true;
+    } else {
+        document.getElementById("status").innerText = "OPERACIONAL: " + data.n;
+    }
+    
+    Object.keys(posMap).forEach(k => {
+        const val = data.p[k] || 0;
+        state[k].targetScale = val > 0 ? (val * 0.45) + 0.5 : 0.01; 
+        
+        // Aplica a densidade adaptativa baseada na escala
+        if (val !== state[k].lastPercentage && val > 0) {
+            blocks[k].geometry.dispose(); 
+            blocks[k].geometry = createAdaptiveGeometry(val);
+            state[k].lastPercentage = val;
+        }
+
+        const uiCell = document.getElementById(`ui-${k}`);
+        uiCell.innerHTML = `${k}<br>${val}%`;
+        
+        const prevVal = step > 0 ? (ETAPAS[step-1].p[k] || 0) : 0;
+        if(val !== prevVal) uiCell.classList.add('active-cell');
+        else uiCell.classList.remove('active-cell');
+    });
+    
+    step++;
+    
+    // Só agenda a próxima etapa se ainda não for a última
+    if (step < ETAPAS.length) {
+        timer = setTimeout(updateStep, 2500);
+    }
+}
+
+// function updateStep() {
+//     if (step >= ETAPAS.length) return;
+//     const data = ETAPAS[step];
+//     document.getElementById("status").innerText = "OPERACIONAL: " + data.n;
+    
+//     Object.keys(posMap).forEach(k => {
+//         const val = data.p[k] || 0;
+//         state[k].targetScale = val > 0 ? (val * 0.45) + 0.5 : 0.01; 
+        
+//         // COMPENSAÇÃO DE DENSIDADE: Se o valor mudou significativamente, reconstrói a geometria
+//         if (val !== state[k].lastPercentage && val > 0) {
+//             blocks[k].geometry.dispose(); // Limpa memória
+//             blocks[k].geometry = createAdaptiveGeometry(val);
+//             state[k].lastPercentage = val;
+//         }
+
+//         const uiCell = document.getElementById(`ui-${k}`);
+//         uiCell.innerHTML = `${k}<br>${val}%`;
+        
+//         const prevVal = step > 0 ? (ETAPAS[step-1].p[k] || 0) : 0;
+//         if(val !== prevVal) uiCell.classList.add('active-cell');
+//         else uiCell.classList.remove('active-cell');
+//     });
+    
+//     step++;
+//     timer = setTimeout(updateStep, 2500);
+// }
+
+document.getElementById('startBtn').onclick = () => {
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('pauseBtn').disabled = false;
+    updateStep();
+};
+
+document.getElementById('pauseBtn').onclick = () => {
+    clearTimeout(timer);
+    document.getElementById('pauseBtn').disabled = true;
+    document.getElementById('resumeBtn').disabled = false;
+    document.getElementById("status").innerText = "SISTEMA: PAUSADO";
+};
+
+document.getElementById('resumeBtn').onclick = () => {
+    document.getElementById('pauseBtn').disabled = false;
+    document.getElementById('resumeBtn').disabled = true;
+    updateStep();
+};
+
+function animate() {
+    requestAnimationFrame(animate);
+    angle += (targetAngle - angle) * 0.07;
+    radius += (targetRadius - radius) * 0.07;
+    const rad = angle * Math.PI / 180;
+    camera.position.set(Math.cos(rad)*radius, radius*0.7, Math.sin(rad)*radius);
+    camera.lookAt(0, 2, 0);
+
+    Object.keys(blocks).forEach(k => {
+        state[k].currentScale += (state[k].targetScale - state[k].currentScale) * 0.05;
+        blocks[k].scale.set(state[k].currentScale, state[k].currentScale, state[k].currentScale);
+    });
+    renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
