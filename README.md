@@ -49,7 +49,7 @@ O sistema permite:
 
 ## 📷 Demonstração
 
-![Simulador](images/imagem1.png)
+![Simulador](imagem1.png)
 
 ---
 
